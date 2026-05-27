@@ -1,4 +1,4 @@
-const REGEX = /\b[a-z]+\d{2,}\b/i;
+const REGEX = /\b[a-z]+\d{2,3}\b/i;
 
 export const RegEx = (text: string): number => {
     return text.search(REGEX);
