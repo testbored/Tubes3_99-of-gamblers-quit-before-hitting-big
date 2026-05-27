@@ -1,0 +1,24 @@
+{
+  "name": "tubes3_99-of-gamblers-quit-before-hitting-big",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/testbored/Tubes3_99-of-gamblers-quit-before-hitting-big.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/testbored/Tubes3_99-of-gamblers-quit-before-hitting-big/issues"
+  },
+  "homepage": "https://github.com/testbored/Tubes3_99-of-gamblers-quit-before-hitting-big#readme",
+  "devDependencies": {
+    "typescript": "^6.0.3"
+  }
+}
