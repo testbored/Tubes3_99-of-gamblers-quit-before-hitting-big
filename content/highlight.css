@@ -1,0 +1,14 @@
+.judol-highlight {
+  background-color: rgba(255, 200, 0, 0.4);
+  border-bottom: 2px solid rgba(255, 150, 0, 0.9);
+}
+
+.judol-tooltip {
+  position: absolute;
+  background: #222;
+  color: #fff;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  z-index: 2147483647;
+}

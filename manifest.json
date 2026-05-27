@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Judol Detector",
   "version": "1.0.0",
-  "description": "Detects gambling-related tokens on pages (KMP, Boyer-Moore, Regex, Weighted Levenshtein)",
+  "description": "Detects judol tokens on pages",
   "permissions": ["storage", "scripting"],
   "host_permissions": ["<all_urls>"],
   "action": { "default_popup": "popup/popup.html" },
