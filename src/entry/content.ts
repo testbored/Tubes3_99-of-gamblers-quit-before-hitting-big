@@ -3,6 +3,85 @@ import { KMP } from '../algorithms/KMP';
 import { isFuzzyMatch } from '../algorithms/LW';
 import { RegEx, getCodeMatch } from '../algorithms/Regex';
 
+type Algo = 'regex' | 'exact' | 'fuzzy';
+
+type Hit = {
+  start: number;
+  end: number;
+  text: string;
+  title?: string;
+  keyword: string;
+  algo: Algo;
+  key: string;
+};
+
+type MatchBatch = {
+  hits: Hit[];
+  time: number;
+};
+
+type ScanStats = {
+  counts: Map<string, number>;
+  times: Record<Algo, number>;
+};
+
+const scanStats: ScanStats = {
+  counts: new Map<string, number>(),
+  times: { regex: 0, exact: 0, fuzzy: 0 }
+};
+
+const tip = document.createElement('div');
+tip.style.cssText = [
+  'position:fixed',
+  'z-index:2147483647',
+  'display:none',
+  'max-width:280px',
+  'padding:8px 10px',
+  'border-radius:8px',
+  'background:rgba(20,20,20,.96)',
+  'color:#fff',
+  'font:12px/1.4 sans-serif',
+  'box-shadow:0 8px 24px rgba(0,0,0,.25)',
+  'pointer-events:none',
+  'white-space:pre-wrap'
+].join(';');
+document.documentElement.appendChild(tip);
+
+function setTip(node: HTMLElement, x: number, y: number) {
+  const keyword = node.dataset.keyword || '';
+  const algo = node.dataset.algo || '';
+  const count = node.dataset.count || '0';
+  const time = node.dataset.time || '0';
+  tip.textContent = [
+    `Keyword: ${keyword}`,
+    `Algorithm: ${algo}`,
+    `Occurrences: ${count}`,
+    `Execution time: ${time} ms`
+  ].join('\n');
+  tip.style.left = `${Math.min(x + 12, window.innerWidth - 300)}px`;
+  tip.style.top = `${Math.min(y + 12, window.innerHeight - 120)}px`;
+  tip.style.display = 'block';
+}
+
+document.addEventListener('mouseover', (event) => {
+  const el = (event.target as HTMLElement | null)?.closest?.('.judol-highlight') as HTMLElement | null;
+  if (!el) return;
+  setTip(el, event.clientX, event.clientY);
+});
+
+document.addEventListener('mousemove', (event) => {
+  const el = (event.target as HTMLElement | null)?.closest?.('.judol-highlight') as HTMLElement | null;
+  if (!el) return;
+  setTip(el, event.clientX, event.clientY);
+});
+
+document.addEventListener('mouseout', (event) => {
+  const el = event.target as HTMLElement | null;
+  if (el && el.closest && el.closest('.judol-highlight')) {
+    tip.style.display = 'none';
+  }
+});
+
 async function loadKw(): Promise<string[]> {
   const url = chrome.runtime.getURL('keywords/keywords.txt');
   try {
@@ -26,11 +105,18 @@ function mkSpan(text: string, title?: string) {
   return span;
 }
 
+function isOneOf(value: string, list: string[]): boolean {
+  for (let i = 0; i < list.length; i++) {
+    if (list[i] === value) return true;
+  }
+  return false;
+}
+
 function skipNode(node: Text): boolean {
   let current: HTMLElement | null = node.parentElement;
   while (current) {
     const tag = current.tagName;
-    if (['SCRIPT', 'STYLE', 'NOSCRIPT', 'IFRAME', 'INPUT', 'TEXTAREA', 'BUTTON', 'SELECT', 'OPTION'].includes(tag)) {
+    if (isOneOf(tag, ['SCRIPT', 'STYLE', 'NOSCRIPT', 'IFRAME', 'INPUT', 'TEXTAREA', 'BUTTON', 'SELECT', 'OPTION'])) {
       return true;
     }
     const role = current.getAttribute('role');
@@ -48,7 +134,7 @@ function skipNode(node: Text): boolean {
   return false;
 }
 
-function markNode(node: Text, matches: Array<{start:number,end:number,text:string,title?:string}>) {
+function markNode(node: Text, matches: Hit[]) {
   if (!matches || matches.length === 0) return;
   matches = matches.slice().sort((a,b) => a.start - b.start || a.end - b.end);
 
@@ -60,11 +146,14 @@ function markNode(node: Text, matches: Array<{start:number,end:number,text:strin
   const textContent = node.nodeValue || '';
 
   for (const m of matches) {
-    const { start, end, title } = m;
+    const { start, end, title, key, algo, keyword } = m;
     if (start > lastIndex) {
       frag.appendChild(document.createTextNode(textContent.slice(lastIndex, start)));
     }
     const span = mkSpan(textContent.slice(start, end), title);
+    span.dataset.key = key;
+    span.dataset.algo = algo;
+    span.dataset.keyword = keyword;
     frag.appendChild(span);
     lastIndex = Math.max(lastIndex, end);
   }
@@ -85,16 +174,28 @@ function hasObfuscation(text: string): boolean {
   return /[0-9@#$!|€£α]/.test(text) || /[A-Z]/.test(text) || /[^a-z0-9\s]/i.test(text);
 }
 
-function collectRegexMatches(text: string): Array<{start:number,end:number,text:string,title?:string}> {
-  const match = getCodeMatch(text);
-  if (!match) return [];
-  const index = RegEx(text);
-  if (index < 0) return [];
-  return [{ start: index, end: index + match.length, text: match, title: 'regex' }];
+function addCount(key: string): void {
+  scanStats.counts.set(key, (scanStats.counts.get(key) || 0) + 1);
 }
 
-function collectExactMatches(text: string, textLC: string, keywords: string[], keywordsLC: string[]): Array<{start:number,end:number,text:string,title?:string}> {
-  const matches: Array<{start:number,end:number,text:string,title?:string}> = [];
+function collectRegexMatches(text: string): MatchBatch {
+  const started = performance.now();
+  const hits: Hit[] = [];
+  const match = getCodeMatch(text);
+  if (match) {
+    const index = RegEx(text);
+    if (index >= 0) {
+      const key = `regex:${match.toLowerCase()}`;
+      addCount(key);
+      hits.push({ start: index, end: index + match.length, text: match, title: 'regex', keyword: match, algo: 'regex', key });
+    }
+  }
+  return { hits, time: performance.now() - started };
+}
+
+function collectExactMatches(text: string, textLC: string, keywords: string[], keywordsLC: string[]): MatchBatch {
+  const started = performance.now();
+  const hits: Hit[] = [];
   for (let i = 0; i < keywordsLC.length; i++) {
     const kw = keywords[i];
     const kwLC = keywordsLC[i];
@@ -104,15 +205,18 @@ function collectExactMatches(text: string, textLC: string, keywords: string[], k
       const pos = kwLC.length > 3 ? BM(kwLC, sliceLC) : KMP(sliceLC, kwLC);
       if (pos === -1) break;
       const start = offset + pos;
-      matches.push({start, end: start + kw.length, text: text.substring(start, start+kw.length), title: 'exact:'+kw});
+      const key = `exact:${kwLC}`;
+      addCount(key);
+      hits.push({start, end: start + kw.length, text: text.substring(start, start+kw.length), title: 'exact:'+kw, keyword: kw, algo: 'exact', key});
       offset = start + kw.length;
     }
   }
-  return matches;
+  return { hits, time: performance.now() - started };
 }
 
-function collectFuzzyMatches(text: string, keywords: string[], keywordsLC: string[], fuzzyBuckets: Map<number, Array<{ kw: string; kwLC: string }>>): Array<{start:number,end:number,text:string,title?:string}> {
-  const matches: Array<{start:number,end:number,text:string,title?:string}> = [];
+function collectFuzzyMatches(text: string, keywords: string[], keywordsLC: string[], fuzzyBuckets: Map<number, Array<{ kw: string; kwLC: string }>>): MatchBatch {
+  const started = performance.now();
+  const hits: Hit[] = [];
   const tokens = text.split(/(\W+)/);
   let idx = 0;
   for (const tok of tokens) {
@@ -137,18 +241,39 @@ function collectFuzzyMatches(text: string, keywords: string[], keywordsLC: strin
         const threshold = 1;
         const res = isFuzzyMatch(tokLC, item.kwLC, threshold);
         if (res.matched) {
-          matches.push({start: idx, end: idx + tokLen, text: tok, title: 'fuzzy:'+item.kw+':d='+res.distance});
+          const key = `fuzzy:${item.kwLC}`;
+          addCount(key);
+          hits.push({start: idx, end: idx + tokLen, text: tok, title: 'fuzzy:'+item.kw+':d='+res.distance, keyword: item.kw, algo: 'fuzzy', key});
         }
       }
     }
     idx += tok.length;
   }
-  return matches;
+  return { hits, time: performance.now() - started };
+}
+
+function syncTooltipMeta(): void {
+  document.querySelectorAll<HTMLElement>('.judol-highlight').forEach((el) => {
+    const key = el.dataset.key || '';
+    const algo = el.dataset.algo || '';
+    const keyword = el.dataset.keyword || '';
+    const count = scanStats.counts.get(key) || 0;
+    const time = scanStats.times[algo as Algo] || 0;
+    el.dataset.count = String(count);
+    el.dataset.time = time.toFixed(2);
+    if (!el.dataset.keyword) el.dataset.keyword = keyword;
+    if (!el.dataset.algo) el.dataset.algo = algo;
+  });
 }
 
 async function scan() {
   const keywords = await loadKw();
   if (!keywords.length) return;
+
+  scanStats.counts.clear();
+  scanStats.times.regex = 0;
+  scanStats.times.exact = 0;
+  scanStats.times.fuzzy = 0;
 
   const keywordsLC = keywords.map(k => k.toLowerCase());
   const fuzzyBuckets = new Map<number, Array<{ kw: string; kwLC: string }>>();
@@ -187,14 +312,18 @@ async function scan() {
       Promise.resolve(collectFuzzyMatches(text, keywords, keywordsLC, fuzzyBuckets)),
     ]);
 
-    counts.regex += regexMatches.length;
-    counts.exact += exactMatches.length;
-    counts.fuzzy += fuzzyMatches.length;
+    scanStats.times.regex += regexMatches.time;
+    scanStats.times.exact += exactMatches.time;
+    scanStats.times.fuzzy += fuzzyMatches.time;
 
-    const matches: Array<{start:number,end:number,text:string,title?:string}> = [
-      ...regexMatches,
-      ...exactMatches,
-      ...fuzzyMatches,
+    counts.regex += regexMatches.hits.length;
+    counts.exact += exactMatches.hits.length;
+    counts.fuzzy += fuzzyMatches.hits.length;
+
+    const matches: Hit[] = [
+      ...regexMatches.hits,
+      ...exactMatches.hits,
+      ...fuzzyMatches.hits,
     ];
 
     if (matches.length) {
@@ -208,9 +337,11 @@ async function scan() {
           else unique.push(mm);
         }
       }
-      markNode(node, unique.map(u=>({start:u.start, end:u.end, text:text.substring(u.start,u.end), title:u.title})));
+      markNode(node, unique);
     }
   }
+
+  syncTooltipMeta();
 }
 
 function clearMarks() {
@@ -218,6 +349,7 @@ function clearMarks() {
     const txt = document.createTextNode(el.textContent || '');
     el.parentNode?.replaceChild(txt, el);
   });
+  tip.style.display = 'none';
 }
 
 async function rescan() {

@@ -26,9 +26,16 @@ function areVisuallySimilar(a: string, b: string): boolean {
   if (lowerA === lowerB) return true;
 
   const mapA = VISUAL_SIMILAR[lowerA];
-  if (mapA && mapA.includes(b)) return true;
+  function listHas(values: string[] | undefined, target: string): boolean {
+    if (!values) return false;
+    for (let i = 0; i < values.length; i++) {
+      if (values[i] === target) return true;
+    }
+    return false;
+  }
+  if (mapA && listHas(mapA, b)) return true;
   const mapB = VISUAL_SIMILAR[lowerB];
-  if (mapB && mapB.includes(a)) return true;
+  if (mapB && listHas(mapB, a)) return true;
 
   const LEET: Record<string, string> = { '0': 'o', '1': 'i', '3': 'e', '4': 'a', '5': 's', '7': 't', '8': 'b' };
   if (LEET[lowerA] === lowerB || LEET[lowerB] === lowerA) return true;
