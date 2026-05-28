@@ -1,16 +1,21 @@
 const VISUAL_SIMILAR: Record<string, string[]> = {
   '0': ['o', 'O'],
   '1': ['l', 'i', 'I'],
+  '2': ['z', 'Z'],
   '3': ['e', 'E'],
   '4': ['a', 'A'],
   '5': ['s', 'S'],
   '6': ['g', 'G'],
   '7': ['t', 'T'],
   '8': ['b', 'B'],
+  '9': ['g', 'G', 'q', 'Q'],
   'α': ['a', 'A'],
   '@': ['a', 'A'],
   '$': ['s', 'S'],
-  '|': ['l', 'L']
+  '|': ['l', 'L'],
+  '!': ['i', 'I', 'l', 'L'],
+  '€': ['e', 'E'],
+  '£': ['l', 'L']
 };
 
 function areVisuallySimilar(a: string, b: string): boolean {
@@ -36,18 +41,24 @@ export interface WeightedResult {
   comparisons: number;
 }
 
-export const weightedLevenshtein = (a: string, b: string): WeightedResult => {
+export const weightedLevenshtein = (a: string, b: string, maxDistance = Infinity): WeightedResult => {
   const A = a || '';
   const B = b || '';
   const n = A.length;
   const m = B.length;
 
-  const dp: number[][] = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
-  for (let i = 0; i <= n; i++) dp[i][0] = i; // deletion
-  for (let j = 0; j <= m; j++) dp[0][j] = j; // insertion
+  if (maxDistance !== Infinity && Math.abs(n - m) > maxDistance) {
+    return { distance: maxDistance + 1, comparisons: 0 };
+  }
+
+  let prev = new Array(m + 1).fill(0);
+  let curr = new Array(m + 1).fill(0);
+  for (let j = 0; j <= m; j++) prev[j] = j;
 
   let comparisons = 0;
   for (let i = 1; i <= n; i++) {
+    curr[0] = i;
+    let rowMin = curr[0];
     for (let j = 1; j <= m; j++) {
       comparisons++;
       const ca = A[i - 1];
@@ -57,27 +68,30 @@ export const weightedLevenshtein = (a: string, b: string): WeightedResult => {
       else if (areVisuallySimilar(ca, cb)) subCost = 0.3;
       else subCost = 1;
 
-      const del = dp[i - 1][j] + 1; // deletion
-      const ins = dp[i][j - 1] + 1; // insertion
-      const sub = dp[i - 1][j - 1] + subCost; // substitution
+      const del = prev[j] + 1; // deletion
+      const ins = curr[j - 1] + 1; // insertion
+      const sub = prev[j - 1] + subCost; // substitution
 
-      dp[i][j] = Math.min(del, ins, sub);
+      curr[j] = Math.min(del, ins, sub);
+      if (curr[j] < rowMin) rowMin = curr[j];
     }
+
+    if (maxDistance !== Infinity && rowMin > maxDistance) {
+      return { distance: maxDistance + 1, comparisons };
+    }
+
+    const tmp = prev;
+    prev = curr;
+    curr = tmp;
   }
 
-  return { distance: dp[n][m], comparisons };
+  return { distance: prev[m], comparisons };
 };
 
 export const isFuzzyMatch = (token: string, keyword: string, maxDistanceOrRatio: number): { matched: boolean; distance: number } => {
-  const res = weightedLevenshtein(token, keyword);
-  const d = res.distance;
-  let matched = false;
-  if (maxDistanceOrRatio <= 1) {
-    matched = d <= Math.max(1, Math.floor(keyword.length * maxDistanceOrRatio));
-  } else {
-    matched = d <= maxDistanceOrRatio;
-  }
-  return { matched, distance: d };
+  const threshold = maxDistanceOrRatio <= 1 ? Math.max(1, Math.floor(keyword.length * maxDistanceOrRatio)) : maxDistanceOrRatio;
+  const res = weightedLevenshtein(token, keyword, threshold);
+  return { matched: res.distance <= threshold, distance: res.distance };
 };
 
 export default weightedLevenshtein;
