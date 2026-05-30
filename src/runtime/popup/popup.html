@@ -7,6 +7,14 @@
   </head>
   <body>
     <h3>Judol Detector</h3>
+    <label for="algo">Exact-match algorithm:</label>
+    <select id="algo">
+      <option value="auto">Auto (KMP/BM/Rabin)</option>
+      <option value="ac">Aho-Corasick</option>
+      <option value="rabin">Rabin-Karp</option>
+      <option value="bm">Boyer-Moore</option>
+      <option value="kmp">KMP</option>
+    </select>
     <button id="rescan">Rescan Page</button>
     <div id="status"></div>
     <script src="popup/popup.js"></script>

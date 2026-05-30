@@ -3,6 +3,7 @@ import { KMP, KMPComparisons, resetKMPComparisons } from '../algorithms/KMP';
 import { isFuzzyMatch } from '../algorithms/LW';
 import { RegEx, getCodeMatch } from '../algorithms/Regex';
 import { AhoCorasick } from '../algorithms/ACorasick';
+import { search as RabinKarpSearch, resetRabinKarpComparisons, RabinKarpHashComparisons, RabinKarpCharComparisons } from '../algorithms/RabinKarp';
 
 type Algo = 'regex' | 'exact' | 'fuzzy';
 
@@ -13,6 +14,7 @@ type Hit = {
   title?: string;
   keyword: string;
   algo: Algo;
+  method: string;
   key: string;
 };
 
@@ -32,6 +34,8 @@ const scanStats: ScanStats = {
   times: { regex: 0, exact: 0, fuzzy: 0 },
   comparisons: new Map<string, number>()
 };
+
+let scanGeneration = 0;
 
 const tip = document.createElement('div');
 tip.style.cssText = [
@@ -53,12 +57,14 @@ document.documentElement.appendChild(tip);
 function setTip(node: HTMLElement, x: number, y: number) {
   const keyword = node.dataset.keyword || '';
   const algo = node.dataset.algo || '';
+  const method = node.dataset.method || '';
   const count = node.dataset.count || '0';
   const time = node.dataset.time || '0';
   const comparisons = node.dataset.comparisons || '0';
   tip.textContent = [
     `Keyword: ${keyword}`,
-    `Algorithm: ${algo}`,
+    `Match type: ${algo}`,
+    `Algorithm used: ${method || algo}`,
     `Occurrences: ${count}`,
     `Comparisons: ${comparisons}`,
     `Execution time: ${time} ms`
@@ -151,13 +157,14 @@ function markNode(node: Text, matches: Hit[]) {
   const textContent = node.nodeValue || '';
 
   for (const m of matches) {
-    const { start, end, title, key, algo, keyword } = m;
+    const { start, end, title, key, algo, keyword, method } = m;
     if (start > lastIndex) {
       frag.appendChild(document.createTextNode(textContent.slice(lastIndex, start)));
     }
     const span = mkSpan(textContent.slice(start, end), title);
     span.dataset.key = key;
     span.dataset.algo = algo;
+    span.dataset.method = method;
     span.dataset.keyword = keyword;
     frag.appendChild(span);
     lastIndex = Math.max(lastIndex, end);
@@ -197,33 +204,93 @@ function collectRegexMatches(text: string): MatchBatch {
       const key = `regex:${match.toLowerCase()}`;
       addCount(key);
       addComparisons(key, 0);
-      hits.push({ start: index, end: index + match.length, text: match, title: 'regex', keyword: match, algo: 'regex', key });
+      hits.push({ start: index, end: index + match.length, text: match, title: 'Regex', keyword: match, algo: 'regex', method: 'Regex', key });
     }
   }
   return { hits, time: performance.now() - started };
 }
 
-function collectExactMatches(text: string, textLC: string, keywords: string[], keywordsLC: string[]): MatchBatch {
+function resolveExactMethod(algoChoice: string, keywordLength: number): string {
+  if (algoChoice === 'ac') return 'Aho-Corasick';
+  if (algoChoice === 'rabin') return 'Rabin-Karp';
+  if (algoChoice === 'bm') return 'Boyer-Moore';
+  if (algoChoice === 'kmp') return 'KMP';
+  if (keywordLength >= 12) return 'Rabin-Karp';
+  if (keywordLength > 3) return 'Boyer-Moore';
+  return 'KMP';
+}
+
+function collectExactMatches(text: string, textLC: string, keywords: string[], keywordsLC: string[], algoChoice: string = 'auto'): MatchBatch {
   const started = performance.now();
   const hits: Hit[] = [];
   for (let i = 0; i < keywordsLC.length; i++) {
     const kw = keywords[i];
     const kwLC = keywordsLC[i];
     let offset = 0;
-    while (offset <= text.length - kw.length) {
-      const sliceLC = textLC.substring(offset);
-      const key = `exact:${kwLC}`;
-      if (kwLC.length > 3) resetBMComparisons();
-      else resetKMPComparisons();
+    const key = `exact:${kwLC}`;
+    const method = resolveExactMethod(algoChoice, kwLC.length);
+    if (algoChoice === 'rabin') {
+      resetRabinKarpComparisons();
+      const positions = RabinKarpSearch(kwLC, textLC);
+      for (const pos of positions) {
+        const start = pos;
+        addCount(key);
+        addComparisons(key, (RabinKarpHashComparisons || 0) + (RabinKarpCharComparisons || 0));
+        hits.push({start, end: start + kw.length, text: text.substring(start, start+kw.length), title: `${kw} via ${method}`, keyword: kw, algo: 'exact', method, key});
+      }
+    } else if (algoChoice === 'bm') {
+      // use BM for all lengths
+      while (offset <= text.length - kw.length) {
+        const sliceLC = textLC.substring(offset);
+        resetBMComparisons();
+        const pos = BM(kwLC, sliceLC);
+        if (pos === -1) break;
+        const start = offset + pos;
+        addCount(key);
+        addComparisons(key, BMComparisons || 0);
+        hits.push({start, end: start + kw.length, text: text.substring(start, start+kw.length), title: `${kw} via ${method}`, keyword: kw, algo: 'exact', method, key});
+        offset = start + kw.length;
+      }
+    } else if (algoChoice === 'kmp') {
+      // use KMP for all lengths
+      while (offset <= text.length - kw.length) {
+        const sliceLC = textLC.substring(offset);
+        resetKMPComparisons();
+        const pos = KMP(sliceLC, kwLC);
+        if (pos === -1) break;
+        const start = offset + pos;
+        addCount(key);
+        addComparisons(key, KMPComparisons || 0);
+        hits.push({start, end: start + kw.length, text: text.substring(start, start+kw.length), title: `${kw} via ${method}`, keyword: kw, algo: 'exact', method, key});
+        offset = start + kw.length;
+      }
+    } else {
+      // auto heuristics: short -> KMP, medium -> BM, long -> Rabin-Karp
+      if (kwLC.length >= 12) {
+        resetRabinKarpComparisons();
+        const positions = RabinKarpSearch(kwLC, textLC);
+        for (const pos of positions) {
+          const start = pos;
+          addCount(key);
+          addComparisons(key, (RabinKarpHashComparisons || 0) + (RabinKarpCharComparisons || 0));
+          hits.push({start, end: start + kw.length, text: text.substring(start, start+kw.length), title: `${kw} via ${method}`, keyword: kw, algo: 'exact', method, key});
+        }
+      } else {
+        while (offset <= text.length - kw.length) {
+          const sliceLC = textLC.substring(offset);
+          if (kwLC.length > 3) resetBMComparisons();
+          else resetKMPComparisons();
 
-      const pos = kwLC.length > 3 ? BM(kwLC, sliceLC) : KMP(sliceLC, kwLC);
-      if (pos === -1) break;
-      const start = offset + pos;
-      addCount(key);
-      if (kwLC.length > 3) addComparisons(key, BMComparisons || 0);
-      else addComparisons(key, KMPComparisons || 0);
-      hits.push({start, end: start + kw.length, text: text.substring(start, start+kw.length), title: 'exact:'+kw, keyword: kw, algo: 'exact', key});
-      offset = start + kw.length;
+          const pos = kwLC.length > 3 ? BM(kwLC, sliceLC) : KMP(sliceLC, kwLC);
+          if (pos === -1) break;
+          const start = offset + pos;
+          addCount(key);
+          if (kwLC.length > 3) addComparisons(key, BMComparisons || 0);
+          else addComparisons(key, KMPComparisons || 0);
+          hits.push({start, end: start + kw.length, text: text.substring(start, start+kw.length), title: `${kw} via ${method}`, keyword: kw, algo: 'exact', method, key});
+          offset = start + kw.length;
+        }
+      }
     }
   }
   return { hits, time: performance.now() - started };
@@ -241,7 +308,7 @@ function collectACMatches(text: string, textLC: string, ac: AhoCorasick, kwMap: 
     const key = `exact:${kwLC}`;
     addCount(key);
     addComparisons(key, 0);
-    hits.push({ start, end, text: text.substring(start, end), title: 'exact:'+kw, keyword: kw, algo: 'exact', key });
+    hits.push({ start, end, text: text.substring(start, end), title: `${kw} via Aho-Corasick`, keyword: kw, algo: 'exact', method: 'Aho-Corasick', key });
   }
   return { hits, time: performance.now() - started };
 }
@@ -276,7 +343,7 @@ function collectFuzzyMatches(text: string, keywords: string[], keywordsLC: strin
           const key = `fuzzy:${item.kwLC}`;
           addCount(key);
           addComparisons(key, res.comparisons || 0);
-          hits.push({start: idx, end: idx + tokLen, text: tok, title: 'fuzzy:'+item.kw+':d='+res.distance, keyword: item.kw, algo: 'fuzzy', key});
+          hits.push({start: idx, end: idx + tokLen, text: tok, title: `Weighted Levenshtein: ${item.kw}`, keyword: item.kw, algo: 'fuzzy', method: 'Weighted Levenshtein', key});
         }
       }
     }
@@ -289,6 +356,7 @@ function syncTooltipMeta(): void {
   document.querySelectorAll<HTMLElement>('.judol-highlight').forEach((el) => {
     const key = el.dataset.key || '';
     const algo = el.dataset.algo || '';
+    const method = el.dataset.method || '';
     const keyword = el.dataset.keyword || '';
     const count = scanStats.counts.get(key) || 0;
     const time = scanStats.times[algo as Algo] || 0;
@@ -298,11 +366,24 @@ function syncTooltipMeta(): void {
     el.dataset.comparisons = String(comparisons);
     if (!el.dataset.keyword) el.dataset.keyword = keyword;
     if (!el.dataset.algo) el.dataset.algo = algo;
+    if (!el.dataset.method) el.dataset.method = method;
   });
 }
 
-async function scan() {
+async function getAlgoChoice(override?: string): Promise<string> {
+  if (override) return override;
+  return await new Promise((resolve) => {
+    try {
+      chrome.storage && chrome.storage.sync.get({ algoExact: 'auto' }, (items: any) => resolve(items.algoExact || 'auto'));
+    } catch (e) { resolve('auto'); }
+  });
+}
+
+async function scan(algoOverride?: string, generation = 0) {
+  const algoChoice = await getAlgoChoice(algoOverride);
+  if (generation !== scanGeneration) return;
   const keywords = await loadKw();
+  if (generation !== scanGeneration) return;
   if (!keywords.length) return;
 
   scanStats.counts.clear();
@@ -349,13 +430,24 @@ async function scan() {
   while(walker.nextNode()) nodes.push(walker.currentNode as Text);
 
   for (const node of nodes) {
+    if (generation !== scanGeneration) return;
     const text = node.nodeValue || '';
     const textLC = text.toLowerCase();
-    const [regexMatches, exactMatches, fuzzyMatches] = await Promise.all([
-      Promise.resolve(collectRegexMatches(text)),
-      Promise.resolve(collectACMatches(text, textLC, ac, kwMap)),
-      Promise.resolve(collectFuzzyMatches(text, keywords, keywordsLC, fuzzyBuckets)),
-    ]);
+    // choose exact-match collector(s) based on user preference
+    let regexPromise = Promise.resolve(collectRegexMatches(text));
+    let exactPromise: Promise<MatchBatch>;
+    let fuzzyPromise = Promise.resolve(collectFuzzyMatches(text, keywords, keywordsLC, fuzzyBuckets));
+
+    if (algoChoice === 'ac') {
+      exactPromise = Promise.resolve(collectACMatches(text, textLC, ac, kwMap));
+    } else {
+      // use classic exact matching (KMP/BM/Rabin) according to selection
+      exactPromise = Promise.resolve(collectExactMatches(text, textLC, keywords, keywordsLC, algoChoice));
+    }
+
+    const [regexMatches, exactMatches, fuzzyMatches] = await Promise.all([regexPromise, exactPromise, fuzzyPromise]);
+
+    if (generation !== scanGeneration) return;
 
     scanStats.times.regex += regexMatches.time;
     scanStats.times.exact += exactMatches.time;
@@ -386,6 +478,7 @@ async function scan() {
     }
   }
 
+  if (generation !== scanGeneration) return;
   syncTooltipMeta();
 }
 
@@ -397,18 +490,31 @@ function clearMarks() {
   tip.style.display = 'none';
 }
 
-async function rescan() {
+async function rescan(algoOverride?: string) {
+  const generation = ++scanGeneration;
   clearMarks();
-  await scan();
+  await scan(algoOverride, generation);
 }
 
 chrome.runtime.onMessage.addListener((msg: any, sender: any, sendResponse: any) => {
   if (!msg) return;
   if (msg.type === 'rescan') {
-    rescan().then(()=> sendResponse({status: 'rescanned'})).catch((err:any)=> sendResponse({status: 'error', error: String(err)}));
+    rescan(msg.algoExact).then(()=> sendResponse({status: 'rescanned'})).catch((err:any)=> sendResponse({status: 'error', error: String(err)}));
     return true;
   }
 });
+
+try {
+  chrome.storage?.onChanged?.addListener((changes: Record<string, { newValue?: unknown; oldValue?: unknown }>, areaName: string) => {
+    if (areaName !== 'sync') return;
+    const algoChange = changes.algoExact;
+    if (!algoChange) return;
+    const nextAlgo = typeof algoChange.newValue === 'string' ? algoChange.newValue : 'auto';
+    rescan(nextAlgo).catch(() => void 0);
+  });
+} catch {
+  void 0;
+}
 
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', () => { rescan(); }, { once: true });
