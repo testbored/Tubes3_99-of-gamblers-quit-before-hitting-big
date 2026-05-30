@@ -55,7 +55,7 @@ function getGoodSuffixTable(pattern: string): number[] {
     return shiftTable;
 }
 
-function BM(pattern : string, text : string) : number {
+export const BM = (pattern : string, text : string) : number => {
     const badMap = getbadCharacter(pattern);
     const suffArr = getGoodSuffixTable(pattern);
 
