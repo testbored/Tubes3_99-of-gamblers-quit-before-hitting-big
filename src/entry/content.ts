@@ -232,11 +232,14 @@ function collectExactMatches(text: string, textLC: string, keywords: string[], k
     if (algoChoice === 'rabin') {
       resetRabinKarpComparisons();
       const positions = RabinKarpSearch(kwLC, textLC);
+      const totalComparisons = (RabinKarpHashComparisons || 0) + (RabinKarpCharComparisons || 0);
       for (const pos of positions) {
         const start = pos;
         addCount(key);
-        addComparisons(key, (RabinKarpHashComparisons || 0) + (RabinKarpCharComparisons || 0));
         hits.push({start, end: start + kw.length, text: text.substring(start, start+kw.length), title: `${kw} via ${method}`, keyword: kw, algo: 'exact', method, key});
+      }
+      if (positions.length > 0) {
+        addComparisons(key, totalComparisons);
       }
     } else if (algoChoice === 'bm') {
       // use BM for all lengths
@@ -269,11 +272,14 @@ function collectExactMatches(text: string, textLC: string, keywords: string[], k
       if (kwLC.length >= 12) {
         resetRabinKarpComparisons();
         const positions = RabinKarpSearch(kwLC, textLC);
+        const totalComparisons = (RabinKarpHashComparisons || 0) + (RabinKarpCharComparisons || 0);
         for (const pos of positions) {
           const start = pos;
           addCount(key);
-          addComparisons(key, (RabinKarpHashComparisons || 0) + (RabinKarpCharComparisons || 0));
           hits.push({start, end: start + kw.length, text: text.substring(start, start+kw.length), title: `${kw} via ${method}`, keyword: kw, algo: 'exact', method, key});
+        }
+        if (positions.length > 0) {
+          addComparisons(key, totalComparisons);
         }
       } else {
         while (offset <= text.length - kw.length) {

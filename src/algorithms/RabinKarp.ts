@@ -35,13 +35,12 @@ export function search(pattern: string, text: string): number[] {
 
     for (let i = 0; i <= n - m; i++) {
 
-        // count hash comparison between pattern and current text window
+
         RabinKarpHashComparisons++;
         if (p === t) {
             let match = true;
 
             for (let j = 0; j < m; j++) {
-                // count character comparison during verification
                 RabinKarpCharComparisons++;
                 if (text[i + j] !== pattern[j]) {
                     match = false;
