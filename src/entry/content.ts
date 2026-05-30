@@ -145,7 +145,18 @@ function skipNode(node: Text): boolean {
   return false;
 }
 
-function markNode(node: Text, matches: Hit[]) {
+function findBlurTarget(start: HTMLElement | null): HTMLElement | null {
+  let current = start;
+  const preferred = ['P', 'LI', 'DIV', 'ARTICLE', 'SECTION', 'MAIN', 'ASIDE', 'HEADER', 'FOOTER', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6'];
+  while (current) {
+    if (isOneOf(current.tagName, preferred)) return current;
+    if (current === document.body) return current;
+    current = current.parentElement;
+  }
+  return null;
+}
+
+function markNode(node: Text, matches: Hit[], blurEnabled: boolean) {
   if (!matches || matches.length === 0) return;
   matches = matches.slice().sort((a,b) => a.start - b.start || a.end - b.end);
 
@@ -174,7 +185,14 @@ function markNode(node: Text, matches: Hit[]) {
     frag.appendChild(document.createTextNode(textContent.slice(lastIndex)));
   }
 
+  const blurTarget = blurEnabled ? findBlurTarget(parent as HTMLElement | null) : null;
+
   parent.replaceChild(frag, node);
+
+  if (blurTarget) {
+    blurTarget.classList.add('judol-blur');
+    blurTarget.dataset.judolBlur = '1';
+  }
 }
 
 function sameEdge(a: string, b: string): boolean {
@@ -385,8 +403,17 @@ async function getAlgoChoice(override?: string): Promise<string> {
   });
 }
 
+async function getBlurEnabled(): Promise<boolean> {
+  return await new Promise((resolve) => {
+    try {
+      chrome.storage && chrome.storage.sync.get({ blurEnabled: true }, (items: any) => resolve(items.blurEnabled !== false));
+    } catch (e) { resolve(true); }
+  });
+}
+
 async function scan(algoOverride?: string, generation = 0) {
   const algoChoice = await getAlgoChoice(algoOverride);
+  const blurEnabled = await getBlurEnabled();
   if (generation !== scanGeneration) return;
   const keywords = await loadKw();
   if (generation !== scanGeneration) return;
@@ -480,7 +507,7 @@ async function scan(algoOverride?: string, generation = 0) {
           else unique.push(mm);
         }
       }
-      markNode(node, unique);
+      markNode(node, unique, blurEnabled);
     }
   }
 
@@ -492,6 +519,10 @@ function clearMarks() {
   document.querySelectorAll('.judol-highlight').forEach(el=>{
     const txt = document.createTextNode(el.textContent || '');
     el.parentNode?.replaceChild(txt, el);
+  });
+  document.querySelectorAll<HTMLElement>('.judol-blur').forEach(el => {
+    el.classList.remove('judol-blur');
+    if (el.dataset) delete el.dataset.judolBlur;
   });
   tip.style.display = 'none';
 }
@@ -514,9 +545,14 @@ try {
   chrome.storage?.onChanged?.addListener((changes: Record<string, { newValue?: unknown; oldValue?: unknown }>, areaName: string) => {
     if (areaName !== 'sync') return;
     const algoChange = changes.algoExact;
-    if (!algoChange) return;
-    const nextAlgo = typeof algoChange.newValue === 'string' ? algoChange.newValue : 'auto';
-    rescan(nextAlgo).catch(() => void 0);
+    const blurChange = changes.blurEnabled;
+    if (algoChange) {
+      const nextAlgo = typeof algoChange.newValue === 'string' ? algoChange.newValue : 'auto';
+      rescan(nextAlgo).catch(() => void 0);
+    }
+    if (blurChange && !algoChange) {
+      rescan().catch(() => void 0);
+    }
   });
 } catch {
   void 0;

@@ -2,6 +2,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const btn = document.getElementById('rescan');
   const status = document.getElementById('status');
   const algoSelect = document.getElementById('algo');
+  const blurToggle = document.getElementById('blurToggle');
 
   function sendRescan(algoExact) {
     chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
@@ -29,6 +30,19 @@ document.addEventListener('DOMContentLoaded', () => {
       chrome.storage.sync.set({ algoExact: val }, () => {
         status.textContent = 'Algorithm saved';
         sendRescan(val);
+      });
+    });
+  }
+
+  if (blurToggle) {
+    chrome.storage.sync.get({ blurEnabled: true }, (items) => {
+      blurToggle.checked = items.blurEnabled !== false;
+    });
+    blurToggle.addEventListener('change', () => {
+      const enabled = !!blurToggle.checked;
+      chrome.storage.sync.set({ blurEnabled: enabled }, () => {
+        status.textContent = enabled ? 'Blur enabled' : 'Blur disabled';
+        sendRescan(algoSelect ? algoSelect.value : 'auto');
       });
     });
   }

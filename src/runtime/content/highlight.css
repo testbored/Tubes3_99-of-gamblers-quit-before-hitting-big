@@ -1,6 +1,10 @@
 .judol-highlight {
-  background-color: rgba(255, 200, 0, 0.4);
-  border-bottom: 2px solid rgba(255, 150, 0, 0.9);
+  background-color: rgba(255, 200, 0, 0.25);
+  border-bottom: 1px solid rgba(255, 150, 0, 0.8);
+}
+
+.judol-blur {
+  filter: blur(4px);
 }
 
 .judol-tooltip {
