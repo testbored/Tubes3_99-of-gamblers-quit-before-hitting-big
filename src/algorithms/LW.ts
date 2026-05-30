@@ -95,10 +95,10 @@ export const weightedLevenshtein = (a: string, b: string, maxDistance = Infinity
   return { distance: prev[m], comparisons };
 };
 
-export const isFuzzyMatch = (token: string, keyword: string, maxDistanceOrRatio: number): { matched: boolean; distance: number } => {
+export const isFuzzyMatch = (token: string, keyword: string, maxDistanceOrRatio: number): { matched: boolean; distance: number; comparisons: number } => {
   const threshold = maxDistanceOrRatio <= 1 ? Math.max(1, Math.floor(keyword.length * maxDistanceOrRatio)) : maxDistanceOrRatio;
   const res = weightedLevenshtein(token, keyword, threshold);
-  return { matched: res.distance <= threshold, distance: res.distance };
+  return { matched: res.distance <= threshold, distance: res.distance, comparisons: res.comparisons };
 };
 
 export default weightedLevenshtein;

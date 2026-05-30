@@ -1,5 +1,5 @@
-import { BM } from '../algorithms/BM';
-import { KMP } from '../algorithms/KMP';
+import { BM, BMComparisons, resetBMComparisons } from '../algorithms/BM';
+import { KMP, KMPComparisons, resetKMPComparisons } from '../algorithms/KMP';
 import { isFuzzyMatch } from '../algorithms/LW';
 import { RegEx, getCodeMatch } from '../algorithms/Regex';
 
@@ -23,11 +23,13 @@ type MatchBatch = {
 type ScanStats = {
   counts: Map<string, number>;
   times: Record<Algo, number>;
+  comparisons: Map<string, number>;
 };
 
 const scanStats: ScanStats = {
   counts: new Map<string, number>(),
-  times: { regex: 0, exact: 0, fuzzy: 0 }
+  times: { regex: 0, exact: 0, fuzzy: 0 },
+  comparisons: new Map<string, number>()
 };
 
 const tip = document.createElement('div');
@@ -52,10 +54,12 @@ function setTip(node: HTMLElement, x: number, y: number) {
   const algo = node.dataset.algo || '';
   const count = node.dataset.count || '0';
   const time = node.dataset.time || '0';
+  const comparisons = node.dataset.comparisons || '0';
   tip.textContent = [
     `Keyword: ${keyword}`,
     `Algorithm: ${algo}`,
     `Occurrences: ${count}`,
+    `Comparisons: ${comparisons}`,
     `Execution time: ${time} ms`
   ].join('\n');
   tip.style.left = `${Math.min(x + 12, window.innerWidth - 300)}px`;
@@ -178,6 +182,10 @@ function addCount(key: string): void {
   scanStats.counts.set(key, (scanStats.counts.get(key) || 0) + 1);
 }
 
+function addComparisons(key: string, value: number): void {
+  scanStats.comparisons.set(key, (scanStats.comparisons.get(key) || 0) + value);
+}
+
 function collectRegexMatches(text: string): MatchBatch {
   const started = performance.now();
   const hits: Hit[] = [];
@@ -187,6 +195,7 @@ function collectRegexMatches(text: string): MatchBatch {
     if (index >= 0) {
       const key = `regex:${match.toLowerCase()}`;
       addCount(key);
+      addComparisons(key, 0);
       hits.push({ start: index, end: index + match.length, text: match, title: 'regex', keyword: match, algo: 'regex', key });
     }
   }
@@ -202,11 +211,16 @@ function collectExactMatches(text: string, textLC: string, keywords: string[], k
     let offset = 0;
     while (offset <= text.length - kw.length) {
       const sliceLC = textLC.substring(offset);
+      const key = `exact:${kwLC}`;
+      if (kwLC.length > 3) resetBMComparisons();
+      else resetKMPComparisons();
+
       const pos = kwLC.length > 3 ? BM(kwLC, sliceLC) : KMP(sliceLC, kwLC);
       if (pos === -1) break;
       const start = offset + pos;
-      const key = `exact:${kwLC}`;
       addCount(key);
+      if (kwLC.length > 3) addComparisons(key, BMComparisons || 0);
+      else addComparisons(key, KMPComparisons || 0);
       hits.push({start, end: start + kw.length, text: text.substring(start, start+kw.length), title: 'exact:'+kw, keyword: kw, algo: 'exact', key});
       offset = start + kw.length;
     }
@@ -243,6 +257,7 @@ function collectFuzzyMatches(text: string, keywords: string[], keywordsLC: strin
         if (res.matched) {
           const key = `fuzzy:${item.kwLC}`;
           addCount(key);
+          addComparisons(key, res.comparisons || 0);
           hits.push({start: idx, end: idx + tokLen, text: tok, title: 'fuzzy:'+item.kw+':d='+res.distance, keyword: item.kw, algo: 'fuzzy', key});
         }
       }
@@ -259,8 +274,10 @@ function syncTooltipMeta(): void {
     const keyword = el.dataset.keyword || '';
     const count = scanStats.counts.get(key) || 0;
     const time = scanStats.times[algo as Algo] || 0;
+    const comparisons = scanStats.comparisons.get(key) || 0;
     el.dataset.count = String(count);
     el.dataset.time = time.toFixed(2);
+    el.dataset.comparisons = String(comparisons);
     if (!el.dataset.keyword) el.dataset.keyword = keyword;
     if (!el.dataset.algo) el.dataset.algo = algo;
   });
@@ -274,6 +291,7 @@ async function scan() {
   scanStats.times.regex = 0;
   scanStats.times.exact = 0;
   scanStats.times.fuzzy = 0;
+  scanStats.comparisons.clear();
 
   const keywordsLC = keywords.map(k => k.toLowerCase());
   const fuzzyBuckets = new Map<number, Array<{ kw: string; kwLC: string }>>();

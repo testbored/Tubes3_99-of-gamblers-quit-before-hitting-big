@@ -1,4 +1,12 @@
+export let RabinKarpHashComparisons: number = 0;
+export let RabinKarpCharComparisons: number = 0;
+export function resetRabinKarpComparisons(): void { RabinKarpHashComparisons = 0; RabinKarpCharComparisons = 0; }
+
 export function search(pattern: string, text: string): number[] {
+
+    // reset counters for this run
+    RabinKarpHashComparisons = 0;
+    RabinKarpCharComparisons = 0;
 
     const d: number = 256;
     const q: number = 101;
@@ -27,10 +35,14 @@ export function search(pattern: string, text: string): number[] {
 
     for (let i = 0; i <= n - m; i++) {
 
+        // count hash comparison between pattern and current text window
+        RabinKarpHashComparisons++;
         if (p === t) {
             let match = true;
 
             for (let j = 0; j < m; j++) {
+                // count character comparison during verification
+                RabinKarpCharComparisons++;
                 if (text[i + j] !== pattern[j]) {
                     match = false;
                     break;

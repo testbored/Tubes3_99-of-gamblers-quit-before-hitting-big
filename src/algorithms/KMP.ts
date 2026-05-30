@@ -22,11 +22,19 @@ const getLPS = (pattern: string): number[] => {
     return lps;
 };
 
+export let KMPComparisons: number = 0;
+export function resetKMPComparisons(): void {
+    KMPComparisons = 0;
+}
 export const KMP = (text: string, pattern: string): number => {
     const lps = getLPS(pattern);
     let i = 0;
     let j = 0;
+    // reset counter for this run
+    KMPComparisons = 0;
     while (i < text.length) {
+        // count this character comparison attempt
+        KMPComparisons++;
         if (text[i] === pattern[j]) {
             i++;
             j++;
