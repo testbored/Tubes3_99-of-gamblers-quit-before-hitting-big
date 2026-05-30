@@ -48,8 +48,8 @@ Untuk pengembangan, jalankan build lagi setelah mengedit `src/` lalu reload ekst
 
 | No | Nama | NIM |
 |---|---|---|
-| 1 | Ben | 13524074 |
-| 2 | Daro | 13524 |
-| 3 | Nate | 13524 |
+| 1 | Nathan E.C. Marpaung | 13524062 |
+| 2 | Bernhard Aprillio Pramana | 13524074 |
+| 3 | Mahmudia Kimdaro Amin | 13524083 |
 
 
