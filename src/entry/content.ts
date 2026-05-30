@@ -2,6 +2,7 @@ import { BM, BMComparisons, resetBMComparisons } from '../algorithms/BM';
 import { KMP, KMPComparisons, resetKMPComparisons } from '../algorithms/KMP';
 import { isFuzzyMatch } from '../algorithms/LW';
 import { RegEx, getCodeMatch } from '../algorithms/Regex';
+import { AhoCorasick } from '../algorithms/ACorasick';
 
 type Algo = 'regex' | 'exact' | 'fuzzy';
 
@@ -228,6 +229,23 @@ function collectExactMatches(text: string, textLC: string, keywords: string[], k
   return { hits, time: performance.now() - started };
 }
 
+function collectACMatches(text: string, textLC: string, ac: AhoCorasick, kwMap: Map<string,string>): MatchBatch {
+  const started = performance.now();
+  const hits: Hit[] = [];
+  const results = ac.search(textLC);
+  for (const r of results) {
+    const kwLC = r.word;
+    const kw = kwMap.get(kwLC) || kwLC;
+    const start = r.index;
+    const end = start + kw.length;
+    const key = `exact:${kwLC}`;
+    addCount(key);
+    addComparisons(key, 0);
+    hits.push({ start, end, text: text.substring(start, end), title: 'exact:'+kw, keyword: kw, algo: 'exact', key });
+  }
+  return { hits, time: performance.now() - started };
+}
+
 function collectFuzzyMatches(text: string, keywords: string[], keywordsLC: string[], fuzzyBuckets: Map<number, Array<{ kw: string; kwLC: string }>>): MatchBatch {
   const started = performance.now();
   const hits: Hit[] = [];
@@ -303,6 +321,15 @@ async function scan() {
     fuzzyBuckets.set(kw.length, bucket);
   }
 
+  // Build Aho-Corasick automaton for exact matches (use lowercase for case-insensitive matching)
+  const ac = new AhoCorasick();
+  const kwMap = new Map<string,string>();
+  for (let i = 0; i < keywordsLC.length; i++) {
+    ac.insert(keywordsLC[i]);
+    kwMap.set(keywordsLC[i], keywords[i]);
+  }
+  ac.buildlinks();
+
   let counts = { regex: 0, exact: 0, fuzzy: 0 };
 
   const walker = document.createTreeWalker(
@@ -326,7 +353,7 @@ async function scan() {
     const textLC = text.toLowerCase();
     const [regexMatches, exactMatches, fuzzyMatches] = await Promise.all([
       Promise.resolve(collectRegexMatches(text)),
-      Promise.resolve(collectExactMatches(text, textLC, keywords, keywordsLC)),
+      Promise.resolve(collectACMatches(text, textLC, ac, kwMap)),
       Promise.resolve(collectFuzzyMatches(text, keywords, keywordsLC, fuzzyBuckets)),
     ]);
 
