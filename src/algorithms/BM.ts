@@ -55,6 +55,9 @@ function getGoodSuffixTable(pattern: string): number[] {
     return shiftTable;
 }
 
+export let BMComparisons: number = 0;
+export function resetBMComparisons(): void { BMComparisons = 0; }
+
 export const BM = (pattern : string, text : string) : number => {
     const badMap = getbadCharacter(pattern);
     const suffArr = getGoodSuffixTable(pattern);
@@ -62,12 +65,19 @@ export const BM = (pattern : string, text : string) : number => {
     const n = text.length;
     const m = pattern.length
 
+    // reset counter for this run
+    BMComparisons = 0;
+
     let t = 0;
 
     while(t <= n - m){
         let j = m - 1
-        while(j >= 0 && pattern[j] === text[t+j]){
-            j--;
+        // count character comparisons between pattern and text
+        while (j >= 0) {
+            BMComparisons++;
+            if (pattern[j] === text[t + j]) {
+                j--;
+            } else break;
         }
         if(j == -1){
             return t;
