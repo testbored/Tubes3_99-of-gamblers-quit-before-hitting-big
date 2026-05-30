@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "build:ext": "node ./scripts/build-extension.js",
+    "build:ext": "tsc scripts/build-extension.ts --module commonjs --target ES2020 --esModuleInterop --skipLibCheck --sourceMap false --outDir scripts && node ./scripts/build-extension.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
